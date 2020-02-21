@@ -1,4 +1,4 @@
-#ifdef PARSER_H
+#ifndef PARSER_H
 #define PARSER_H
 
 // commands

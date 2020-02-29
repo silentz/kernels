@@ -5,10 +5,10 @@
 
 void debug(const char *format, ...) {
 #ifdef DEBUG_OUTPUT
-	va_list argptr;
-	va_start(argptr, format);
-	vfprintf(stderr, format, argptr);
-	fprintf(stderr, "\n");
-	va_end(argptr);
+    va_list argptr;
+    va_start(argptr, format);
+    vfprintf(stderr, format, argptr);
+    fprintf(stderr, "\n");
+    va_end(argptr);
 #endif
 }

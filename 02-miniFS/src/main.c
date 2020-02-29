@@ -31,7 +31,7 @@ int main(int argc, char **argv) {
         minifs_init(argv[1]);
     }
 
-    fs = minifs_open();
+    fs = minifs_open(argv[1]);
 
     while (true) {
         input = readline("$ ");

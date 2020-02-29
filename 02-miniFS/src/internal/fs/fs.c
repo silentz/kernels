@@ -38,15 +38,15 @@ void minifs_init(const char *filename) {
 
     minifs_write_block(fd, (void*) &sblock, sizeof(struct SuperBlock), 0);
 
-    unsigned char *bits = (unsigned char*) malloc(DEFAULT_INODE_COUNT);
-    memset(bits, 0, DEFAULT_INODE_COUNT);
-    minifs_write_block(fd, (void*) bits, DEFAULT_INODE_COUNT, sizeof(struct SuperBlock));
-    free(bits);
+    Inode *inodes = (Inode*) malloc(sizeof(Inode) * DEFAULT_INODE_COUNT);
+    memset(inodes, 0, DEFAULT_INODE_COUNT * sizeof(Inode));
+    minifs_write_block(fd, inodes, DEFAULT_INODE_COUNT * sizeof(Inode), sizeof(SuperBlock));
+    free(inodes);
 
-    bits = (unsigned char*) malloc(DEFAULT_BLOCK_COUNT);
-    memset(bits, 0, DEFAULT_BLOCK_COUNT);
-    minifs_write_block(fd, (void*) bits, DEFAULT_BLOCK_SIZE, sizeof(struct SuperBlock) + DEFAULT_INODE_COUNT);
-    free(bits);
+    Block *blocks = (Block*) malloc(sizeof(Block) * DEFAULT_BLOCK_COUNT);
+    memset(blocks, 0, DEFAULT_BLOCK_COUNT * sizeof(Block));
+    minifs_write_block(fd, blocks, DEFAULT_BLOCK_SIZE * sizeof(Block), sizeof(SuperBlock) + DEFAULT_INODE_COUNT * sizeof(Inode));
+    free(blocks);
 
     close(fd);
 }
@@ -54,7 +54,37 @@ void minifs_init(const char *filename) {
 
 struct Filesystem minifs_open(const char *filename) {
     struct Filesystem result;
+
+    result.fd = open(filename, O_RDWR);
+    if (result.fd < 0) {
+        debug(MINIFS_ERR "cannot open filesystem: %s", filename);
+        exit(-1);
+    }
+
+    struct SuperBlock sblock;
+    minifs_read_block(result.fd, (void*) &sblock, sizeof(struct SuperBlock), 0);
+
+    sblock.inode_map = (Inode*) malloc(sblock.inode_count * sizeof(Inode));
+    sblock.block_map = (Block*) malloc(sblock.block_count * sizeof(Block));
+    minifs_read_block(result.fd, sblock.inode_map, sblock.inode_count * sizeof(Inode), sizeof(SuperBlock));
+    minifs_read_block(result.fd, sblock.block_map, sblock.block_count * sizeof(Block), sizeof(SuperBlock) + sblock.inode_count * sizeof(Inode));
+
+    result.sblock = sblock;
     return result;
+}
+
+
+void minifs_read_block(int fd, void *data, uint32_t size, uint32_t offset) {
+    lseek(fd, offset, SEEK_SET);
+    uint32_t read_size = 0;
+    while (read_size < size) {
+        uint32_t status = read(fd, data + read_size, size - read_size);
+        if (status <= 0) {
+            debug(MINIFS_ERR "read error");
+            exit(-1);
+        }
+        read_size += status;
+    }
 }
 
 
@@ -62,6 +92,11 @@ void minifs_write_block(int fd, void *data, uint32_t size, uint32_t offset) {
     lseek(fd, offset, SEEK_SET);
     uint32_t write_size = 0;
     while (write_size < size) {
-        write_size += write(fd, data + write_size, size - write_size);
+        uint32_t status = write(fd, data + write_size, size - write_size);
+        if (status <= 0) {
+            debug(MINIFS_ERR "write error");
+            exit(-1);
+        }
+        write_size += status;
     }
 }

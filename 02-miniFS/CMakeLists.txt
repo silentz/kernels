@@ -6,7 +6,7 @@ include_directories("src/")
 set(DEBUG TRUE)
 if(DEBUG)
     message("[!] COMPILING IN DEBUG MODE")
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DDEBUG_OUTPUT")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DDEBUG_OUTPUT -g")
 endif()
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -lreadline")

@@ -36,7 +36,7 @@ int main(int argc, char **argv) {
     while (true) {
         input = readline("$ ");
         tokens = split_line(input, &count);
-        minifs_execute(tokens, count);
+        minifs_execute(&fs, tokens, count);
         free_lines(tokens, count);
         free(input);
     }

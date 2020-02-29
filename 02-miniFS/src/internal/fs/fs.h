@@ -8,7 +8,7 @@
 #define DEFAULT_INODE_COUNT 1024
 #define DEFAULT_BLOCK_COUNT 1024
 #define DEFAULT_BLOCK_SIZE  1024
-
+#define MAX_FILENAME_SIZE   32
 
 struct Inode;
 struct Block;
@@ -30,16 +30,21 @@ typedef struct SuperBlock {
 typedef struct Block {
     int32_t next_block;
     uint32_t size;
+    enum BlockType {
+        MINIFS_BLOCK_EMPTY = 0,
+        MINIFS_BLOCK_USED = 1
+    } type;
 } Block;
 
 
 // inode srtuct
 typedef struct Inode {
-    uint32_t file_size;
+    uint32_t size;      // size of file or count of objects in dir
     int32_t root_block;
     enum InodeType {
-        MINIFS_FILE,
-        MINIFS_DIRECTOTY
+        MINIFS_INODE_EMPTY = 0,
+        MINIFS_INODE_FILE = 1,
+        MINIFS_INODE_DIRECTORY = 2
     } type;
 } Inode;
 
@@ -47,8 +52,16 @@ typedef struct Inode {
 // filesystem controller block
 typedef struct Filesystem {
     struct SuperBlock sblock;
+    uint32_t current_dir;       // inode id
     int fd;
 } Filesystem;
+
+
+typedef struct DirectoryMap {
+    uint32_t size;
+    char **names;
+    uint32_t *inodes;
+} DirectoryMap;
 
 
 void minifs_init(const char *);
@@ -59,5 +72,13 @@ bool check_exists(const char *);
 // fd, data, size, offset
 void minifs_write_block(int, void *, uint32_t, uint32_t);
 void minifs_read_block(int, void*, uint32_t, uint32_t);
+
+
+uint32_t minifs_block_head_offset(Filesystem*, uint32_t);
+uint32_t minifs_block_body_offset(Filesystem*, uint32_t);
+uint32_t minifs_inode_offset(Filesystem*, uint32_t);
+
+DirectoryMap *minifs_read_dir(Filesystem*, uint32_t);
+void minifs_clear_dirmap(DirectoryMap*);
 
 #endif

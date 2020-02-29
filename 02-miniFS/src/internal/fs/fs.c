@@ -28,6 +28,8 @@ void minifs_init(const char *filename) {
         exit(-1);
     }
 
+    // init superblock
+
     struct SuperBlock sblock = {
         .inode_count = DEFAULT_INODE_COUNT,
         .block_count = DEFAULT_BLOCK_COUNT,
@@ -36,16 +38,28 @@ void minifs_init(const char *filename) {
         .block_size = DEFAULT_BLOCK_SIZE,
     };
 
-    minifs_write_block(fd, (void*) &sblock, sizeof(struct SuperBlock), 0);
-
     Inode *inodes = (Inode*) malloc(sizeof(Inode) * DEFAULT_INODE_COUNT);
     memset(inodes, 0, DEFAULT_INODE_COUNT * sizeof(Inode));
-    minifs_write_block(fd, inodes, DEFAULT_INODE_COUNT * sizeof(Inode), sizeof(SuperBlock));
-    free(inodes);
 
     Block *blocks = (Block*) malloc(sizeof(Block) * DEFAULT_BLOCK_COUNT);
     memset(blocks, 0, DEFAULT_BLOCK_COUNT * sizeof(Block));
+
+    // init root dir
+
+    inodes[0].root_block = 0;
+    inodes[0].size = 0;
+    inodes[0].type = MINIFS_INODE_DIRECTORY;
+
+    blocks[0].next_block = -1;
+    blocks[0].size = 0;
+    blocks[0].type = MINIFS_BLOCK_USED;
+
+    // write changes
+
+    minifs_write_block(fd, (void*) &sblock, sizeof(struct SuperBlock), 0);
+    minifs_write_block(fd, inodes, DEFAULT_INODE_COUNT * sizeof(Inode), sizeof(SuperBlock));
     minifs_write_block(fd, blocks, DEFAULT_BLOCK_SIZE * sizeof(Block), sizeof(SuperBlock) + DEFAULT_INODE_COUNT * sizeof(Inode));
+    free(inodes);
     free(blocks);
 
     close(fd);
@@ -61,16 +75,98 @@ struct Filesystem minifs_open(const char *filename) {
         exit(-1);
     }
 
+    // read superblock
+
     struct SuperBlock sblock;
     minifs_read_block(result.fd, (void*) &sblock, sizeof(struct SuperBlock), 0);
+
+    // reading inode and block map
 
     sblock.inode_map = (Inode*) malloc(sblock.inode_count * sizeof(Inode));
     sblock.block_map = (Block*) malloc(sblock.block_count * sizeof(Block));
     minifs_read_block(result.fd, sblock.inode_map, sblock.inode_count * sizeof(Inode), sizeof(SuperBlock));
     minifs_read_block(result.fd, sblock.block_map, sblock.block_count * sizeof(Block), sizeof(SuperBlock) + sblock.inode_count * sizeof(Inode));
 
+    // setup filesystem
+
     result.sblock = sblock;
+    result.current_dir = 0;
+
     return result;
+}
+
+
+uint32_t minifs_block_head_offset(Filesystem *fs, uint32_t index) {
+    uint32_t result = 0;
+    result += sizeof(SuperBlock);
+    result += fs->sblock.inode_count * sizeof(Inode);
+    result += index * sizeof(Block);
+    return result;
+}
+
+
+uint32_t minifs_block_body_offset(Filesystem *fs, uint32_t index) {
+    uint32_t result = 0;
+    result += sizeof(SuperBlock);
+    result += fs->sblock.inode_count * sizeof(Inode);
+    result += fs->sblock.block_count * sizeof(Block);
+    result += fs->sblock.block_size * index;
+    return result;
+}
+
+
+uint32_t minifs_inode_offset(Filesystem *fs, uint32_t index) {
+    uint32_t result = 0;
+    result += sizeof(SuperBlock);
+    result += index * sizeof(Inode);
+    return result;
+}
+
+
+DirectoryMap *minifs_read_dir(Filesystem *fs, uint32_t dir_inode) {
+    // init map and read inode
+    DirectoryMap *result = (DirectoryMap*) malloc(sizeof(DirectoryMap));
+    Inode inode = fs->sblock.inode_map[dir_inode];
+
+    // setup array
+    result->size = 0; // used as a counter in loop
+    result->names = (char**) malloc(sizeof(char*) * inode.size);
+    result->inodes = (uint32_t*) malloc(sizeof(uint32_t) * inode.size);
+
+    // go through all blocks
+    int32_t current_block = inode.root_block;
+    while (current_block >= 0) {
+        Block block = fs->sblock.block_map[current_block];  // current block meta
+        uint32_t count = block.size / (MAX_FILENAME_SIZE + sizeof(uint32_t));   // count of entries in block
+        uint32_t current_offset = minifs_block_body_offset(fs, current_block);  // offset to current physical block
+
+        for (int index = 0; index < count; ++index) {
+            char *name = (char*) malloc(MAX_FILENAME_SIZE);
+            uint32_t inode_id;
+            uint32_t local_offset = current_offset + index * (MAX_FILENAME_SIZE + sizeof(uint32_t));
+            minifs_read_block(fs->fd, name, MAX_FILENAME_SIZE, local_offset);
+            minifs_read_block(fs->fd, &inode_id, sizeof(uint32_t), local_offset + MAX_FILENAME_SIZE);
+
+            // save info
+            result->names[result->size] = name;
+            result->inodes[result->size] = inode_id;
+            ++result->size;
+        }
+
+        current_block = block.next_block;
+    }
+
+    return result;
+}
+
+
+void minifs_clear_dirmap(DirectoryMap *map) {
+    for (uint32_t index = 0; index < map->size; ++index) {
+        free(map->names[index]);
+    }
+    free(map->names);
+    free(map->inodes);
+    free(map);
 }
 
 

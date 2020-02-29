@@ -5,6 +5,7 @@
 #include <string.h>
 #include <fcntl.h>
 #include <stdlib.h>
+#include <unistd.h>
 
 
 // defines
@@ -75,7 +76,11 @@ void minifs_ls(Filesystem* fs, const char **data, int count) {
     for (uint32_t index = 0; index < content->size; ++index) {
         printf("%s ", content->names[index]);
     }
-    printf("\n");
+    if (content->size == 0) {
+        fprintf(stderr, "directory is empty\n");
+    } else {
+        printf("\n");
+    }
     minifs_clear_dirmap(content);
 }
 
@@ -87,6 +92,34 @@ void minifs_cd(Filesystem* fs, const char **data, int count) {
 
 void minifs_mkdir(Filesystem* fs, const char **data, int count) {
     debug(MINIFS_INFO "mkdir command");
+    if (count < 2) {
+        fprintf(stderr, "format: %s <dirname>\n", data[0]);
+        return;
+    }
+    if (strlen(data[1]) > MAX_FILENAME_SIZE) {
+        fprintf(stderr, "filename is too long\n");
+        return;
+    }
+    int32_t inode_index = minifs_find_free_inode(fs);
+    int32_t block_index = minifs_find_free_block(fs);
+    if (inode_index < 0) {
+        fprintf(stderr, "Ran out of free inodes\n");
+        return;
+    }
+    if (block_index < 0) {
+        fprintf(stderr, "Ran out of free blocks\n");
+        return;
+    }
+    fs->sblock.inode_map[inode_index].type = MINIFS_INODE_DIRECTORY;
+    fs->sblock.inode_map[inode_index].root_block = block_index;
+    fs->sblock.inode_map[inode_index].size = 0;
+    fs->sblock.block_map[block_index].size = 0;
+    fs->sblock.block_map[block_index].next_block = -1;
+    fs->sblock.block_map[block_index].type = MINIFS_BLOCK_USED;
+    fs->sblock.used_inode_count++;
+    fs->sblock.used_block_count++;
+    minifs_append_dir(fs, fs->current_dir, data[1], inode_index);
+    minifs_update_superblock(fs);
 }
 
 

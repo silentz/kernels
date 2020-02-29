@@ -81,4 +81,10 @@ uint32_t minifs_inode_offset(Filesystem*, uint32_t);
 DirectoryMap *minifs_read_dir(Filesystem*, uint32_t);
 void minifs_clear_dirmap(DirectoryMap*);
 
+
+int32_t minifs_find_free_inode(Filesystem*);
+int32_t minifs_find_free_block(Filesystem*);
+void minifs_update_superblock(Filesystem*);
+void minifs_append_dir(Filesystem*, uint32_t, const char *, uint32_t);
+
 #endif

@@ -5,6 +5,7 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdio.h>
 
 
 bool check_exists(const char *filename) {
@@ -167,6 +168,73 @@ void minifs_clear_dirmap(DirectoryMap *map) {
     free(map->names);
     free(map->inodes);
     free(map);
+}
+
+
+int32_t minifs_find_free_inode(Filesystem *fs) {
+    if (fs->sblock.used_inode_count >= fs->sblock.inode_count) {
+        return -1;
+    }
+    for (uint32_t index = 0; index < fs->sblock.inode_count; ++index) {
+        if (fs->sblock.inode_map[index].type == MINIFS_INODE_EMPTY) {
+            return index;
+        }
+    }
+    return -1;
+}
+
+
+int32_t minifs_find_free_block(Filesystem *fs) {
+    if (fs->sblock.used_block_count >= fs->sblock.block_count) {
+        return -1;
+    }
+    for (uint32_t index = 0; index < fs->sblock.block_count; ++index) {
+        if (fs->sblock.block_map[index].type == MINIFS_BLOCK_EMPTY) {
+            return index;
+        }
+    }
+    return -1;
+}
+
+
+void minifs_update_superblock(Filesystem *fs) {
+    minifs_write_block(fs->fd, &fs->sblock, sizeof(SuperBlock), 0);
+    for (uint32_t index = 0; index < fs->sblock.inode_count; ++index) {
+        uint32_t offset = minifs_inode_offset(fs, index);
+        minifs_write_block(fs->fd, &fs->sblock.inode_map[index], sizeof(Inode), offset);
+    }
+    for (uint32_t index = 0; index < fs->sblock.block_count; ++index) {
+        uint32_t offset = minifs_block_head_offset(fs, index);
+        minifs_write_block(fs->fd, &fs->sblock.block_map[index], sizeof(Block), offset);
+    }
+}
+
+
+void minifs_append_dir(Filesystem *fs, uint32_t dir_inode, const char *name, uint32_t inode) {
+    uint32_t current_block_id = fs->sblock.inode_map[dir_inode].root_block;
+    Block current_block = fs->sblock.block_map[current_block_id];
+    while (current_block_id >= 0) {
+        if (current_block.size + (sizeof(uint32_t) + MAX_FILENAME_SIZE) > fs->sblock.block_size) {
+            if (current_block.next_block < 0) {
+                int32_t free_block = minifs_find_free_block(fs);
+                if (free_block < 0) {
+                    fprintf(stderr, "Ran out of free blocks\n");
+                    return;
+                }
+                fs->sblock.block_map[current_block_id].next_block = free_block;
+                current_block = fs->sblock.block_map[current_block_id];
+            }
+            current_block_id = current_block.next_block;
+            current_block = fs->sblock.block_map[current_block_id];
+            continue;
+        }
+        uint32_t offset = minifs_block_body_offset(fs, current_block_id);
+        offset += current_block.size;
+        minifs_write_block(fs->fd, (void *) name, MAX_FILENAME_SIZE, offset);
+        minifs_write_block(fs->fd, &inode, sizeof(uint32_t), offset + MAX_FILENAME_SIZE);
+        fs->sblock.block_map[current_block_id].size += MAX_FILENAME_SIZE + sizeof(uint32_t);
+        break;
+    }
 }
 
 

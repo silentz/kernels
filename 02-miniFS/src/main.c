@@ -8,6 +8,10 @@
 #include <internal/utils/utils.h>
 #include <internal/commands/execute.h>
 #include <internal/debug/debug.h>
+#include <internal/fs/fs.h>
+
+
+struct Filesystem fs; // global fs object
 
 
 int main(int argc, char **argv) {
@@ -22,6 +26,12 @@ int main(int argc, char **argv) {
 
     bool exists = check_exists(argv[1]);
     debug(MINIFS_INFO "status: %d", exists);
+
+    if (!exists) {
+        minifs_init(argv[1]);
+    }
+
+    fs = minifs_open();
 
     while (true) {
         input = readline("$ ");

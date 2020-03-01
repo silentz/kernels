@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.0)
 project(minifs)
 include_directories("src/")
 
-set(DEBUG TRUE)
+set(DEBUG FALSE)
 if(DEBUG)
     message("[!] COMPILING IN DEBUG MODE")
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DDEBUG_OUTPUT -g")

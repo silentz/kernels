@@ -1,11 +1,15 @@
 #include <internal/commands/execute.h>
 #include <internal/debug/debug.h>
 #include <internal/fs/fs.h>
+
 #include <stdio.h>
 #include <string.h>
 #include <fcntl.h>
 #include <stdlib.h>
 #include <unistd.h>
+
+#include <readline/readline.h>
+#include <readline/history.h>
 
 
 // defines
@@ -230,7 +234,7 @@ void minifs_rm(Filesystem* fs, const char **data, int count) {
 void minifs_write(Filesystem* fs, const char **data, int count) {
     debug(MINIFS_INFO "write command");
     if (count < 2) {
-        fprintf(stderr, "format: %s <filename> data1 data2 ...", data[0]);
+        fprintf(stderr, "format: %s <filename>", data[0]);
         return;
     }
 
@@ -252,16 +256,48 @@ void minifs_write(Filesystem* fs, const char **data, int count) {
         return;
     }
 
-    for (int index = 2; index < count; ++index) {
-        minifs_append_data(fs, target_inode, (const unsigned char *) data[index], strlen(data[index]));
-    }
+    const char *input = readline("Enter data: ");
+    minifs_append_data(fs, target_inode, (const unsigned char *) input, strlen(input));
+    free((void*) input);
 
+    fs->sblock.inode_map[target_inode].size += strlen(input);
     minifs_update_superblock(fs);
 }
 
 
 void minifs_read(Filesystem* fs, const char **data, int count) {
     debug(MINIFS_INFO "read command");
+    if (count < 2) {
+        fprintf(stderr, "format: %s <filename>", data[0]);
+        return;
+    }
+
+    DirectoryMap *content = minifs_read_dir(fs, fs->current_dir);
+    int32_t target_inode = -1;
+
+    for (int index = 0; index < content->size; ++index) {
+        if (fs->sblock.inode_map[content->inodes[index]].type == MINIFS_INODE_FILE) {
+            if (strcmp(data[1], content->names[index]) == 0) {
+                target_inode = content->inodes[index];
+            }
+        }
+    }
+
+    minifs_clear_dirmap(content);
+
+    if (target_inode == -1) {
+        fprintf(stderr, "No such file\n");
+        return;
+    }
+
+    int32_t dsize = 0;
+    const char *file_content = minifs_read_data(fs, target_inode, &dsize);
+    for (int index = 0; index < dsize; ++index) {
+        printf("%c", file_content[index]);
+    }
+    free((void*) file_content);
+
+    printf("\n");
 }
 
 

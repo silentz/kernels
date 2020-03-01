@@ -87,5 +87,6 @@ int32_t minifs_find_free_inode(Filesystem*);
 int32_t minifs_find_free_block(Filesystem*);
 void minifs_update_superblock(Filesystem*);
 void minifs_append_data(Filesystem*, uint32_t, const unsigned char *, uint32_t);
+const char* minifs_read_data(Filesystem*, int32_t, int32_t*);
 
 #endif

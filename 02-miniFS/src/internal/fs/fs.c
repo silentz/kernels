@@ -271,6 +271,29 @@ void minifs_append_data(Filesystem *fs, uint32_t inode_id, const unsigned char *
 }
 
 
+const char* minifs_read_data(Filesystem *fs, int32_t inode_id, int32_t *size) {
+    const Inode inode = fs->sblock.inode_map[inode_id];
+
+    *size = inode.size;
+    char *buffer = (char*) malloc(inode.size);
+    uint32_t read_size = 0;
+
+    int32_t current_block_id = inode.root_block;
+    Block block = fs->sblock.block_map[current_block_id];
+    while (current_block_id > 0) {
+        if (block.size > 0) {
+            uint32_t offset = minifs_block_body_offset(fs, current_block_id);
+            minifs_read_block(fs->fd, buffer + read_size, block.size, offset);
+            read_size += block.size;
+        }
+        current_block_id = block.next_block;
+        block = fs->sblock.block_map[current_block_id];
+    }
+
+    return buffer;
+}
+
+
 void minifs_read_block(int fd, void *data, uint32_t size, uint32_t offset) {
     lseek(fd, offset, SEEK_SET);
     uint32_t read_size = 0;

@@ -229,6 +229,34 @@ void minifs_rm(Filesystem* fs, const char **data, int count) {
 
 void minifs_write(Filesystem* fs, const char **data, int count) {
     debug(MINIFS_INFO "write command");
+    if (count < 2) {
+        fprintf(stderr, "format: %s <filename> data1 data2 ...", data[0]);
+        return;
+    }
+
+    DirectoryMap *content = minifs_read_dir(fs, fs->current_dir);
+    int32_t target_inode = -1;
+
+    for (int index = 0; index < content->size; ++index) {
+        if (fs->sblock.inode_map[content->inodes[index]].type == MINIFS_INODE_FILE) {
+            if (strcmp(data[1], content->names[index]) == 0) {
+                target_inode = content->inodes[index];
+            }
+        }
+    }
+
+    minifs_clear_dirmap(content);
+
+    if (target_inode == -1) {
+        fprintf(stderr, "No such file\n");
+        return;
+    }
+
+    for (int index = 2; index < count; ++index) {
+        minifs_append_data(fs, target_inode, (const unsigned char *) data[index], strlen(data[index]));
+    }
+
+    minifs_update_superblock(fs);
 }
 
 

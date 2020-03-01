@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#include <stdbool.h>
 
 
 bool check_exists(const char *filename) {
@@ -14,7 +15,7 @@ bool check_exists(const char *filename) {
     if (code == -1) {
         return false;
     }
-    if (info.st_size < sizeof(struct SuperBlock)) {
+    if (info.st_size < sizeof(SuperBlock)) {
         return false;
     }
     return true;
@@ -210,30 +211,61 @@ void minifs_update_superblock(Filesystem *fs) {
 }
 
 
-void minifs_append_dir(Filesystem *fs, uint32_t dir_inode, const char *name, uint32_t inode) {
-    uint32_t current_block_id = fs->sblock.inode_map[dir_inode].root_block;
-    Block current_block = fs->sblock.block_map[current_block_id];
-    while (current_block_id >= 0) {
-        if (current_block.size + (sizeof(uint32_t) + MAX_FILENAME_SIZE) > fs->sblock.block_size) {
-            if (current_block.next_block < 0) {
-                int32_t free_block = minifs_find_free_block(fs);
-                if (free_block < 0) {
-                    fprintf(stderr, "Ran out of free blocks\n");
-                    return;
-                }
-                fs->sblock.block_map[current_block_id].next_block = free_block;
-                current_block = fs->sblock.block_map[current_block_id];
-            }
-            current_block_id = current_block.next_block;
-            current_block = fs->sblock.block_map[current_block_id];
-            continue;
-        }
+void minifs_append_data(Filesystem *fs, uint32_t inode_id, const unsigned char *data, uint32_t data_size) {
+    const Inode inode = fs->sblock.inode_map[inode_id];
+
+    int32_t current_block_id = inode.root_block;  // trying to write data to root_block at first
+    Block block = fs->sblock.block_map[current_block_id];
+
+    while (block.next_block >= 0) {  // searching last block
+        current_block_id = block.next_block;
+        block = fs->sblock.block_map[current_block_id];
+    }
+
+    if ((fs->sblock.block_size - block.size) >= data_size) { // if free space in block is enough
         uint32_t offset = minifs_block_body_offset(fs, current_block_id);
-        offset += current_block.size;
-        minifs_write_block(fs->fd, (void *) name, MAX_FILENAME_SIZE, offset);
-        minifs_write_block(fs->fd, &inode, sizeof(uint32_t), offset + MAX_FILENAME_SIZE);
-        fs->sblock.block_map[current_block_id].size += MAX_FILENAME_SIZE + sizeof(uint32_t);
-        break;
+        offset += block.size;
+        minifs_write_block(fs->fd, (void*) data, data_size, offset);
+        fs->sblock.block_map[current_block_id].size += data_size;
+    } else { // else -- write some data to current and allocate new block
+        if (block.size < fs->sblock.block_size) {
+            uint32_t offset = minifs_block_body_offset(fs, current_block_id);
+            uint32_t delta = fs->sblock.block_size - block.size;
+            offset += block.size;
+            minifs_write_block(fs->fd, (void*) data, delta, offset);
+            fs->sblock.block_map[current_block_id].size = fs->sblock.block_size;
+            data += delta;
+            data_size -= delta;
+        }
+
+        while (data_size > 0) { // data can be too large for one new page
+            int32_t new_block = minifs_find_free_block(fs);
+            if (new_block < 0) {
+                fprintf(stderr, "Ran out of free blocks\n");
+                exit(-1);
+            }
+
+            fs->sblock.block_map[new_block].size = 0; // linking new block
+            fs->sblock.block_map[new_block].type = MINIFS_BLOCK_USED;
+            fs->sblock.block_map[new_block].next_block = -1;
+            fs->sblock.block_map[current_block_id].next_block = new_block;
+            fs->sblock.used_block_count++;
+
+            if (data_size <= fs->sblock.block_size) { // if data finally fits new block size
+                uint32_t offset = minifs_block_body_offset(fs, new_block);
+                minifs_write_block(fs->fd, (void*) data, data_size, offset);
+                fs->sblock.block_map[new_block].size = data_size;
+                return;
+            } else { // if data is still to large to fit one block
+                uint32_t offset = minifs_block_body_offset(fs, new_block);
+                minifs_write_block(fs->fd, (void*) data, fs->sblock.block_size, offset);
+                fs->sblock.block_map[new_block].size = fs->sblock.block_size;
+                data += fs->sblock.block_size;
+                data_size -= fs->sblock.block_size;
+            }
+
+            current_block_id = new_block;
+        }
     }
 }
 

@@ -14,6 +14,7 @@ void minifs_write(Filesystem*, const char **, int);
 void minifs_read(Filesystem*, const char **, int);
 void minifs_help(Filesystem*, const char **, int);
 void minifs_exit(Filesystem*, const char **, int);
+void minifs_debug(Filesystem*, const char **, int);
 
 // main function that executes other commands or throws error
 void minifs_execute(Filesystem*, const char **, int);

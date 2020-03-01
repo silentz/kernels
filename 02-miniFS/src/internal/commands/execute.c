@@ -66,6 +66,11 @@ static struct Command {
         .name = "exit",
         .description = "quit minifs",
         .func = minifs_exit
+    },
+    {
+        .name = "debug",
+        .description = "debug fs",
+        .func = minifs_debug
     }
 };
 
@@ -74,7 +79,16 @@ void minifs_ls(Filesystem* fs, const char **data, int count) {
     debug(MINIFS_INFO "ls command");
     DirectoryMap *content = minifs_read_dir(fs, fs->current_dir);
     for (uint32_t index = 0; index < content->size; ++index) {
-        printf("%s ", content->names[index]);
+        switch (fs->sblock.inode_map[content->inodes[index]].type) {
+            case MINIFS_INODE_DIRECTORY:
+                printf("\e[34m%s\e[0m ", content->names[index]);
+                break;
+            case MINIFS_INODE_FILE:
+                printf("%s ", content->names[index]);
+                break;
+            default:
+                break;
+        }
     }
     if (content->size == 0) {
         fprintf(stderr, "directory is empty\n");
@@ -118,7 +132,13 @@ void minifs_mkdir(Filesystem* fs, const char **data, int count) {
     fs->sblock.block_map[block_index].type = MINIFS_BLOCK_USED;
     fs->sblock.used_inode_count++;
     fs->sblock.used_block_count++;
-    minifs_append_dir(fs, fs->current_dir, data[1], inode_index);
+    fs->sblock.inode_map[fs->current_dir].size++;
+
+    char buffer[MAX_FILENAME_SIZE];
+    memset(buffer, 0, MAX_FILENAME_SIZE);
+    snprintf(buffer, MAX_FILENAME_SIZE, "%s", data[1]);
+    minifs_append_data(fs, fs->current_dir, (const unsigned char*) buffer, MAX_FILENAME_SIZE);
+    minifs_append_data(fs, fs->current_dir, (const unsigned char*) &inode_index, sizeof(uint32_t));
     minifs_update_superblock(fs);
 }
 
@@ -130,6 +150,41 @@ void minifs_rmdir(Filesystem* fs, const char **data, int count) {
 
 void minifs_touch(Filesystem* fs, const char **data, int count) {
     debug(MINIFS_INFO "touch command");
+
+    if (count < 2) {
+        fprintf(stderr, "format: %s <filename>\n", data[0]);
+        return;
+    }
+    if (strlen(data[1]) > MAX_FILENAME_SIZE) {
+        fprintf(stderr, "filename is too long\n");
+        return;
+    }
+    int32_t inode_index = minifs_find_free_inode(fs);
+    int32_t block_index = minifs_find_free_block(fs);
+    if (inode_index < 0) {
+        fprintf(stderr, "Ran out of free inodes\n");
+        return;
+    }
+    if (block_index < 0) {
+        fprintf(stderr, "Ran out of free blocks\n");
+        return;
+    }
+    fs->sblock.inode_map[inode_index].type = MINIFS_INODE_FILE;
+    fs->sblock.inode_map[inode_index].root_block = block_index;
+    fs->sblock.inode_map[inode_index].size = 0;
+    fs->sblock.block_map[block_index].size = 0;
+    fs->sblock.block_map[block_index].next_block = -1;
+    fs->sblock.block_map[block_index].type = MINIFS_BLOCK_USED;
+    fs->sblock.used_inode_count++;
+    fs->sblock.used_block_count++;
+    fs->sblock.inode_map[fs->current_dir].size++;
+
+    char buffer[MAX_FILENAME_SIZE];
+    memset(buffer, 0, MAX_FILENAME_SIZE);
+    snprintf(buffer, MAX_FILENAME_SIZE, "%s", data[1]);
+    minifs_append_data(fs, fs->current_dir, (const unsigned char*) buffer, MAX_FILENAME_SIZE);
+    minifs_append_data(fs, fs->current_dir, (const unsigned char*) &inode_index, sizeof(uint32_t));
+    minifs_update_superblock(fs);
 }
 
 
@@ -162,6 +217,43 @@ void minifs_exit(Filesystem* fs, const char **data, int count) {
     debug(MINIFS_INFO "exit command");
     close(fs->fd);
     exit(0);
+}
+
+
+void minifs_debug(Filesystem *fs, const char **data, int count) {
+    debug(MINIFS_INFO "debug command");
+    printf("====== [Superblock] ======\n");
+    printf("inode_count: %u\n", fs->sblock.inode_count);
+    printf("block_count: %u\n", fs->sblock.block_count);
+    printf("used_inode_count: %u\n", fs->sblock.used_inode_count);
+    printf("used_block_count: %u\n", fs->sblock.used_block_count);
+    printf("block_size: %u\n", fs->sblock.block_size);
+    printf("===== [Inode map] ======\n");
+    for (int index = 0; index < fs->sblock.inode_count; ++index) {
+        char symbols[] = {'.', 'f', 'd'};
+        printf("%c", symbols[fs->sblock.inode_map[index].type]);
+    }
+    printf("\n");
+    printf("===== [Block map] ======\n");
+    for (int index = 0; index < fs->sblock.block_count; ++index) {
+        char symbols[] = {'.', '#'};
+        printf("%c", symbols[fs->sblock.block_map[index].type]);
+    }
+    printf("\n");
+    printf("===== [Inodes] ====== \n");
+    for (int index = 0; index < fs->sblock.inode_count; ++index) {
+        Inode inode = fs->sblock.inode_map[index];
+        if (inode.type != MINIFS_INODE_EMPTY) {
+            printf("Inode {size: %u, root_block %d, type: %d}\n", inode.size, inode.root_block, inode.type);
+        }
+    }
+    printf("===== [Blocks] ====== \n");
+    for (int index = 0; index < fs->sblock.block_count; ++index) {
+        Block block = fs->sblock.block_map[index];
+        if (block.type != MINIFS_BLOCK_EMPTY) {
+            printf("Block {size: %u, next_block: %d}\n", block.size, block.next_block);
+        }
+    }
 }
 
 

@@ -78,6 +78,7 @@ static struct Command {
 void minifs_ls(Filesystem* fs, const char **data, int count) {
     debug(MINIFS_INFO "ls command");
     DirectoryMap *content = minifs_read_dir(fs, fs->current_dir);
+    printf("\e[34m.\e[0m \e[34m..\e[0m ");
     for (uint32_t index = 0; index < content->size; ++index) {
         switch (fs->sblock.inode_map[content->inodes[index]].type) {
             case MINIFS_INODE_DIRECTORY:
@@ -90,17 +91,42 @@ void minifs_ls(Filesystem* fs, const char **data, int count) {
                 break;
         }
     }
-    if (content->size == 0) {
-        fprintf(stderr, "directory is empty\n");
-    } else {
-        printf("\n");
-    }
+    printf("\n");
     minifs_clear_dirmap(content);
 }
 
 
 void minifs_cd(Filesystem* fs, const char **data, int count) {
     debug(MINIFS_INFO "cd command");
+    if (count < 2) {
+        fprintf(stderr, "format: %s <dirname>\n", data[0]);
+        return;
+    }
+
+    if (strcmp(data[1], ".") == 0) {
+        return;
+    }
+
+    if (strcmp(data[1], "..") == 0) {
+        Inode c_inode = fs->sblock.inode_map[fs->current_dir];
+        fs->current_dir = c_inode.parent;
+        return;
+    }
+
+    DirectoryMap *content = minifs_read_dir(fs, fs->current_dir);
+    for (uint32_t index = 0; index < content->size; ++index) {
+        Inode inode = fs->sblock.inode_map[content->inodes[index]];
+        if (inode.type == MINIFS_INODE_DIRECTORY) {
+            if (strcmp(content->names[index], data[1]) == 0) {
+                fs->current_dir = content->inodes[index];
+                minifs_clear_dirmap(content);
+                return;
+            }
+        }
+    }
+
+    fprintf(stderr, "directory not found\n");
+    minifs_clear_dirmap(content);
 }
 
 
@@ -124,12 +150,16 @@ void minifs_mkdir(Filesystem* fs, const char **data, int count) {
         fprintf(stderr, "Ran out of free blocks\n");
         return;
     }
+
     fs->sblock.inode_map[inode_index].type = MINIFS_INODE_DIRECTORY;
     fs->sblock.inode_map[inode_index].root_block = block_index;
+    fs->sblock.inode_map[inode_index].parent = fs->current_dir;
     fs->sblock.inode_map[inode_index].size = 0;
+    
     fs->sblock.block_map[block_index].size = 0;
     fs->sblock.block_map[block_index].next_block = -1;
     fs->sblock.block_map[block_index].type = MINIFS_BLOCK_USED;
+
     fs->sblock.used_inode_count++;
     fs->sblock.used_block_count++;
     fs->sblock.inode_map[fs->current_dir].size++;
@@ -169,12 +199,16 @@ void minifs_touch(Filesystem* fs, const char **data, int count) {
         fprintf(stderr, "Ran out of free blocks\n");
         return;
     }
+
     fs->sblock.inode_map[inode_index].type = MINIFS_INODE_FILE;
     fs->sblock.inode_map[inode_index].root_block = block_index;
+    fs->sblock.inode_map[inode_index].parent = -1;
     fs->sblock.inode_map[inode_index].size = 0;
+
     fs->sblock.block_map[block_index].size = 0;
     fs->sblock.block_map[block_index].next_block = -1;
     fs->sblock.block_map[block_index].type = MINIFS_BLOCK_USED;
+
     fs->sblock.used_inode_count++;
     fs->sblock.used_block_count++;
     fs->sblock.inode_map[fs->current_dir].size++;

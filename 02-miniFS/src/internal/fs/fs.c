@@ -51,6 +51,7 @@ void minifs_init(const char *filename) {
     inodes[0].root_block = 0;
     inodes[0].size = 0;
     inodes[0].type = MINIFS_INODE_DIRECTORY;
+    inodes[0].parent = 0;
 
     blocks[0].next_block = -1;
     blocks[0].size = 0;

@@ -41,6 +41,7 @@ typedef struct Block {
 typedef struct Inode {
     uint32_t size;      // size of file or count of objects in dir
     int32_t root_block;
+    int32_t parent;
     enum InodeType {
         MINIFS_INODE_EMPTY = 0,
         MINIFS_INODE_FILE = 1,

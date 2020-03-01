@@ -84,7 +84,8 @@ void minifs_ls(Filesystem* fs, const char **data, int count) {
     DirectoryMap *content = minifs_read_dir(fs, fs->current_dir);
     printf("\e[34m.\e[0m \e[34m..\e[0m ");
     for (uint32_t index = 0; index < content->size; ++index) {
-        switch (fs->sblock.inode_map[content->inodes[index]].type) {
+        Inode inode = fs->sblock.inode_map[content->inodes[index]];
+        switch (inode.type) {
             case MINIFS_INODE_DIRECTORY:
                 printf("\e[34m%s\e[0m ", content->names[index]);
                 break;
@@ -179,6 +180,48 @@ void minifs_mkdir(Filesystem* fs, const char **data, int count) {
 
 void minifs_rmdir(Filesystem* fs, const char **data, int count) {
     debug(MINIFS_INFO "rmdir command");
+    if (count < 2) {
+        fprintf(stderr, "format: %s <dirname>", data[0]);
+        return;
+    }
+
+    DirectoryMap *content = minifs_read_dir(fs, fs->current_dir);
+    int32_t target_inode = -1;
+
+    for (int index = 0; index < content->size; ++index) {
+        if (fs->sblock.inode_map[content->inodes[index]].type == MINIFS_INODE_DIRECTORY) {
+            if (strcmp(data[1], content->names[index]) == 0) {
+                target_inode = content->inodes[index];
+            }
+        }
+    }
+
+    minifs_clear_dirmap(content);
+
+    content = minifs_read_dir(fs, target_inode);
+    if (content->size > 0) {
+        fprintf(stderr, "directory not empty\n");
+        minifs_clear_dirmap(content);
+        return;
+    }
+    minifs_clear_dirmap(content);
+
+    int32_t current_block = fs->sblock.inode_map[target_inode].root_block;
+    while (current_block > 0) {
+        int32_t next_block = fs->sblock.block_map[current_block].next_block;
+        fs->sblock.block_map[current_block].type = MINIFS_BLOCK_EMPTY;
+        fs->sblock.block_map[current_block].size = 0;
+        fs->sblock.block_map[current_block].next_block = 0;
+        fs->sblock.used_block_count--;
+        current_block = next_block;
+    }
+
+    fs->sblock.inode_map[target_inode].type = MINIFS_INODE_EMPTY;
+    fs->sblock.inode_map[target_inode].size = 0;
+    fs->sblock.inode_map[target_inode].parent = 0;
+    fs->sblock.inode_map[target_inode].root_block = 0;
+    fs->sblock.used_inode_count--;
+    minifs_update_superblock(fs);
 }
 
 

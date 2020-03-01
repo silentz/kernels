@@ -135,24 +135,28 @@ DirectoryMap *minifs_read_dir(Filesystem *fs, uint32_t dir_inode) {
     result->size = 0; // used as a counter in loop
     result->names = (char**) malloc(sizeof(char*) * inode.size);
     result->inodes = (uint32_t*) malloc(sizeof(uint32_t) * inode.size);
+    result->used = (char*) malloc(inode.size);
 
     // go through all blocks
     int32_t current_block = inode.root_block;
     while (current_block >= 0) {
         Block block = fs->sblock.block_map[current_block];  // current block meta
-        uint32_t count = block.size / (MAX_FILENAME_SIZE + sizeof(uint32_t));   // count of entries in block
+        uint32_t count = block.size / (sizeof(char) + MAX_FILENAME_SIZE + sizeof(uint32_t));   // count of entries in block
         uint32_t current_offset = minifs_block_body_offset(fs, current_block);  // offset to current physical block
 
         for (int index = 0; index < count; ++index) {
             char *name = (char*) malloc(MAX_FILENAME_SIZE);
             uint32_t inode_id;
-            uint32_t local_offset = current_offset + index * (MAX_FILENAME_SIZE + sizeof(uint32_t));
-            minifs_read_block(fs->fd, name, MAX_FILENAME_SIZE, local_offset);
-            minifs_read_block(fs->fd, &inode_id, sizeof(uint32_t), local_offset + MAX_FILENAME_SIZE);
+            char used;
+            uint32_t local_offset = current_offset + index * (sizeof(char) + MAX_FILENAME_SIZE + sizeof(uint32_t));
+            minifs_read_block(fs->fd, &used, sizeof(char), local_offset);
+            minifs_read_block(fs->fd, name, MAX_FILENAME_SIZE, local_offset + sizeof(char));
+            minifs_read_block(fs->fd, &inode_id, sizeof(uint32_t), local_offset + sizeof(char) + MAX_FILENAME_SIZE);
 
             // save info
             result->names[result->size] = name;
             result->inodes[result->size] = inode_id;
+            result->used[result->size] = used;
             ++result->size;
         }
 
@@ -268,6 +272,19 @@ void minifs_append_data(Filesystem *fs, uint32_t inode_id, const unsigned char *
             current_block_id = new_block;
         }
     }
+}
+
+
+void minifs_remove_from_dir(Filesystem *fs, uint32_t dir_inode, uint32_t index) {
+    uint32_t current_block_id = fs->sblock.inode_map[dir_inode].root_block;
+    while (index * (sizeof(char) + MAX_FILENAME_SIZE + sizeof(uint32_t)) > fs->sblock.block_size) {
+        current_block_id = fs->sblock.block_map[current_block_id].next_block;
+        index -= fs->sblock.block_size / (sizeof(char) + MAX_FILENAME_SIZE + sizeof(uint32_t));
+    }
+    uint32_t offset = minifs_block_body_offset(fs, current_block_id);
+    offset += index * (sizeof(char) + MAX_FILENAME_SIZE + sizeof(uint32_t));
+    char used = 0;
+    minifs_write_block(fs->fd, (void*) &used, sizeof(char), offset);
 }
 
 

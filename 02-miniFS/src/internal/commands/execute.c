@@ -85,6 +85,9 @@ void minifs_ls(Filesystem* fs, const char **data, int count) {
     printf("\e[34m.\e[0m \e[34m..\e[0m ");
     for (uint32_t index = 0; index < content->size; ++index) {
         Inode inode = fs->sblock.inode_map[content->inodes[index]];
+        if (content->used[index] == 0) {
+            continue;
+        }
         switch (inode.type) {
             case MINIFS_INODE_DIRECTORY:
                 printf("\e[34m%s\e[0m ", content->names[index]);
@@ -172,6 +175,8 @@ void minifs_mkdir(Filesystem* fs, const char **data, int count) {
     char buffer[MAX_FILENAME_SIZE];
     memset(buffer, 0, MAX_FILENAME_SIZE);
     snprintf(buffer, MAX_FILENAME_SIZE, "%s", data[1]);
+    char used = 1;
+    minifs_append_data(fs, fs->current_dir, (const unsigned char*) &used, sizeof(char));
     minifs_append_data(fs, fs->current_dir, (const unsigned char*) buffer, MAX_FILENAME_SIZE);
     minifs_append_data(fs, fs->current_dir, (const unsigned char*) &inode_index, sizeof(uint32_t));
     minifs_update_superblock(fs);
@@ -192,19 +197,16 @@ void minifs_rmdir(Filesystem* fs, const char **data, int count) {
         if (fs->sblock.inode_map[content->inodes[index]].type == MINIFS_INODE_DIRECTORY) {
             if (strcmp(data[1], content->names[index]) == 0) {
                 target_inode = content->inodes[index];
+                minifs_remove_from_dir(fs, fs->current_dir, index);
             }
         }
     }
-
     minifs_clear_dirmap(content);
 
-    content = minifs_read_dir(fs, target_inode);
-    if (content->size > 0) {
-        fprintf(stderr, "directory not empty\n");
-        minifs_clear_dirmap(content);
+    if (target_inode == -1) {
+        fprintf(stderr, "no such directory\n");
         return;
     }
-    minifs_clear_dirmap(content);
 
     int32_t current_block = fs->sblock.inode_map[target_inode].root_block;
     while (current_block > 0) {
@@ -260,9 +262,11 @@ void minifs_touch(Filesystem* fs, const char **data, int count) {
     fs->sblock.used_block_count++;
     fs->sblock.inode_map[fs->current_dir].size++;
 
+    char used = 1;
     char buffer[MAX_FILENAME_SIZE];
     memset(buffer, 0, MAX_FILENAME_SIZE);
     snprintf(buffer, MAX_FILENAME_SIZE, "%s", data[1]);
+    minifs_append_data(fs, fs->current_dir, (const unsigned char*) &used, sizeof(char));
     minifs_append_data(fs, fs->current_dir, (const unsigned char*) buffer, MAX_FILENAME_SIZE);
     minifs_append_data(fs, fs->current_dir, (const unsigned char*) &inode_index, sizeof(uint32_t));
     minifs_update_superblock(fs);
@@ -271,6 +275,48 @@ void minifs_touch(Filesystem* fs, const char **data, int count) {
 
 void minifs_rm(Filesystem* fs, const char **data, int count) {
     debug(MINIFS_INFO "rm command");
+    if (count < 2) {
+        fprintf(stderr, "format: %s <filename>", data[0]);
+        return;
+    }
+
+    DirectoryMap *content = minifs_read_dir(fs, fs->current_dir);
+    int32_t target_inode = -1;
+
+    for (int index = 0; index < content->size; ++index) {
+        if (fs->sblock.inode_map[content->inodes[index]].type == MINIFS_INODE_FILE) {
+            if (strcmp(data[1], content->names[index]) == 0) {
+                target_inode = content->inodes[index];
+                minifs_remove_from_dir(fs, fs->current_dir, index);
+            }
+        }
+    }
+
+    minifs_clear_dirmap(content);
+
+    if (target_inode == -1) {
+        fprintf(stderr, "no such file\n");
+        return;
+    }
+
+    minifs_remove_from_dir(fs, fs->current_dir, target_inode);
+
+    int32_t current_block = fs->sblock.inode_map[target_inode].root_block;
+    while (current_block > 0) {
+        int32_t next_block = fs->sblock.block_map[current_block].next_block;
+        fs->sblock.block_map[current_block].type = MINIFS_BLOCK_EMPTY;
+        fs->sblock.block_map[current_block].size = 0;
+        fs->sblock.block_map[current_block].next_block = 0;
+        fs->sblock.used_block_count--;
+        current_block = next_block;
+    }
+
+    fs->sblock.inode_map[target_inode].type = MINIFS_INODE_EMPTY;
+    fs->sblock.inode_map[target_inode].size = 0;
+    fs->sblock.inode_map[target_inode].parent = 0;
+    fs->sblock.inode_map[target_inode].root_block = 0;
+    fs->sblock.used_inode_count--;
+    minifs_update_superblock(fs);
 }
 
 

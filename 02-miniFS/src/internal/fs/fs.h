@@ -8,7 +8,7 @@
 #define DEFAULT_INODE_COUNT 1024
 #define DEFAULT_BLOCK_COUNT 1024
 #define DEFAULT_BLOCK_SIZE  1024
-#define MAX_FILENAME_SIZE   28
+#define MAX_FILENAME_SIZE   27
 
 struct Inode;
 struct Block;
@@ -62,6 +62,7 @@ typedef struct DirectoryMap {
     uint32_t size;
     char **names;
     uint32_t *inodes;
+    char *used;
 } DirectoryMap;
 
 
@@ -88,5 +89,6 @@ int32_t minifs_find_free_block(Filesystem*);
 void minifs_update_superblock(Filesystem*);
 void minifs_append_data(Filesystem*, uint32_t, const unsigned char *, uint32_t);
 const char* minifs_read_data(Filesystem*, int32_t, int32_t*);
+void minifs_remove_from_dir(Filesystem*, uint32_t, uint32_t);
 
 #endif

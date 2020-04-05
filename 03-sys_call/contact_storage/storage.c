@@ -31,6 +31,7 @@ typedef struct User User;
 #define USER_COUNT  1024
 
 static User users[USER_COUNT];
+static int initialized = 0;
 
 // ========== [System calls implementation] ==========
 
@@ -39,6 +40,13 @@ SYSCALL_DEFINE3(get_user, const char __user *, surname, unsigned int, len, struc
     User current_user;
     int result_index;
     struct user_data result;
+
+    if (initialized == 0) {
+        for (index = 0; index < USER_COUNT; ++index) {
+            users[index].status = 'f';
+        }
+        initialized = 1;
+    }
 
     printk(KERN_INFO "get_user: called\n");
 
@@ -106,6 +114,14 @@ SYSCALL_DEFINE3(get_user, const char __user *, surname, unsigned int, len, struc
 
 SYSCALL_DEFINE1(add_user, struct user_data __user *, data) {
     struct user_data current_user;
+    int index;
+
+    if (initialized == 0) {
+        for (index = 0; index < USER_COUNT; ++index) {
+            users[index].status = 'f';
+        }
+        initialized = 1;
+    }
 
     printk(KERN_INFO "add_user: called\n");
 
@@ -125,6 +141,13 @@ SYSCALL_DEFINE1(add_user, struct user_data __user *, data) {
 
 SYSCALL_DEFINE2(del_user, const char __user *, surname, unsigned int, len) {
     char *local_surname;
+
+    if (initialized == 0) {
+        for (index = 0; index < USER_COUNT; ++index) {
+            users[index].status = 'f';
+        }
+        initialized = 1;
+    }
 
     printk(KERN_INFO "del_user: called\n");
 

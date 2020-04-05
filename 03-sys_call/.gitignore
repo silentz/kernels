@@ -1,2 +1,7 @@
 *
 !.gitignore
+!contact_storage/
+!arch/x86/entry/syscalls/syscall_64.tbl
+!include/linux/syscalls.h
+!Makefile
+!include/linux/user_data.h

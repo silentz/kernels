@@ -124,8 +124,31 @@ SYSCALL_DEFINE1(add_user, struct user_data __user *, data) {
 
 
 SYSCALL_DEFINE2(del_user, const char __user *, surname, unsigned int, len) {
-    printk(KERN_INFO, "del_user system call\n");
-    return -EINVAL;
+    char *local_surname;
+
+    printk(KERN_INFO "del_user: called\n");
+
+    if (len > MAX_INPUT_SIZE) {
+        printk(KERN_ERR "del_user: surname wrong size\n");
+        return -1;
+    }
+
+    local_surname = (char*) kmalloc(len + 1, GFP_KERNEL);
+    local_surname[len] = '\0';
+    if (copy_from_user(local_surname, surname, len) != 0) {
+        printk(KERN_ERR "del_user: can't copy surname from userspace\n");
+        kfree(local_surname);
+        return -1;
+    }
+
+    if (delete_user_note(local_surname) == -1) {
+        printk(KERN_INFO "del_user: user not found\n");
+        kfree(local_surname);
+        return -1;
+    }
+
+    kfree(local_surname);
+    return 0;
 }
 
 

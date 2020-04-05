@@ -7,10 +7,10 @@
 
 // ========== [Local functions] ==========
 
-static int add_user_note(const char *, const char *, const char *, const char *);
+static int add_user_note(const char __user *, const char __user *, const char __user *, const char __user *);
 static int get_user_note(const char *);
 static int delete_user_note(const char *);
-static char* copy_string(const char *);
+static int copy_string(char **, const char __user *);
 
 
 // ========== [Structs] ===========
@@ -105,8 +105,21 @@ SYSCALL_DEFINE3(get_user, const char __user *, surname, unsigned int, len, struc
 
 
 SYSCALL_DEFINE1(add_user, struct user_data __user *, data) {
-    printk(KERN_INFO "add_user system call\n");
-    return -EINVAL;
+    struct user_data current_user;
+
+    printk(KERN_INFO "add_user: called\n");
+
+    if (copy_from_user(&current_user, data, sizeof(struct user_data)) != 0) {
+        printk(KERN_ERR "add_user: can't copy from user\n");
+        return -1;
+    }
+
+    if (add_user_note(current_user.name, current_user.surname, current_user.phone, current_user.email) != 0) {
+        printk(KERN_ERR "add_user: can't add new user\n");
+        return -1;
+    }
+
+    return 0;
 }
 
 
@@ -119,31 +132,36 @@ SYSCALL_DEFINE2(del_user, const char __user *, surname, unsigned int, len) {
 // ========== [Local function implementation] ==========
 
 
-static char *copy_string(const char *data) {
-    char *result;
-    int index;
+static int copy_string(char **result, const char __user *data) {
     size_t size;
 
-    size = strlen(data);
-    result = (char*) kmalloc(sizeof(char) * (size + 1), GFP_KERNEL);
-    for (index = 0; index < size; ++index) {
-        result[index] = data[index];
+    size = strnlen_user(data, MAX_INPUT_SIZE);
+    *result = (char*) kmalloc(size + 1, GFP_KERNEL);
+    if (copy_from_user(*result, data, size) != 0) {
+        return -1;
     }
-    result[size] = '\0';
+    (*result)[size] = '\0';
 
-    return result;
+    return 0;
 }
 
 
-static int add_user_note(const char *name, const char *surname, const char *phone, const char *email) {
+static int add_user_note(const char __user *name, const char __user *surname, const char __user *phone,
+        const char __user *email) {
     int index;
 
     for (index = 0; index < USER_COUNT; ++index) {
         if (users[index].status == 'f') { // check if user cell is free
-            users[index].name = copy_string(name);
-            users[index].surname = copy_string(surname);
-            users[index].phone = copy_string(phone);
-            users[index].email = copy_string(email);
+            if (copy_string(&users[index].name, name) != 0 ||
+                    copy_string(&users[index].surname, surname) != 0 ||
+                    copy_string(&users[index].phone, phone) != 0 ||
+                    copy_string(&users[index].email, email) != 0) {
+                kfree(users[index].name);
+                kfree(users[index].surname);
+                kfree(users[index].phone);
+                kfree(users[index].email);
+                return -1;
+            }
             users[index].status = 't'; // set "taken" status
             return 0;
         }

@@ -2,7 +2,10 @@
 #define INCLUDE_LINUX_USER_DATA
 
 struct user_data {
-    int test;
+    char *name;
+    char *surname;
+    char *phone;
+    char *email;
 };
 
 #endif

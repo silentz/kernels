@@ -8,3 +8,4 @@ Do not copypaste this code to use in your own homework.
 
 1. [Storage kernel module](01-kernel_module)
 2. [MiniFS](02-miniFS)
+3. [Syscall Storage](03-sys_call)

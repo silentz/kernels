@@ -40,6 +40,44 @@ reboot
 ### Usage
 
 After you compiled and ran patched kernel you can run following C program to check everything works fine:
-```
+```c
+#include <stdio.h>
+#include <linux/kernel.h>
+#include <sys/syscall.h>
+#include <unistd.h>
+#include <string.h>
 
+
+#define SYS_ADD_USER 439
+#define SYS_GET_USER 440
+#define SYS_DEL_USER 441
+
+
+struct user_data {
+    char name[1024];
+    char surname[1024];
+    char phone[1024];
+    char email[1024];
+} data;
+
+
+int main() {
+    strcpy(data.name, "test_name");
+    strcpy(data.surname, "test_surname");
+    strcpy(data.phone, "+123456789");
+    strcpy(data.email, "test@test.com");
+
+    int status;
+    status = syscall(SYS_ADD_USER, &data);
+    printf("sys_add_user: %d\n", status);
+
+    struct user_data output;
+    status = syscall(SYS_GET_USER, "test_surname", 12, &output);
+    printf("sys_get_user: %d %s\n", status, output.name);
+
+    status = syscall(SYS_DEL_USER, "test_surname", 12);
+    printf("sys_del_user: %d\n", status);
+
+    return 0;
+}
 ```
